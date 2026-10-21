@@ -117,7 +117,18 @@ function fillStyles(beers) {
   }
 }
 
-const data = await fetch("./beers.json").then((r) => r.json());
+let data;
+try {
+  const beersUrl = new URL("./beers.json", import.meta.url);
+  beersUrl.searchParams.set("t", String(Date.now()));
+  const res = await fetch(beersUrl, { cache: "no-store" });
+  if (!res.ok) throw new Error(`beers.json HTTP ${res.status}`);
+  data = await res.json();
+} catch (err) {
+  $("updated").textContent = "Could not load the beer list. Refresh the page.";
+  $("count").textContent = String(err.message || err);
+  throw err;
+}
 const when = new Date(data.updatedAt);
 $("updated").textContent =
   `${data.beers.length} beers · updated ${when.toLocaleString("en-AU")} · ` +
