@@ -20,6 +20,7 @@
       </p>
       <p class="meta" id="updated">Loading catalogue…</p>
     </header>
+
     <section class="controls" aria-label="Filters">
       <label class="field grow">
         <span>Search</span>
@@ -54,11 +55,13 @@
         <label><input type="radio" name="mode" value="shelf" /> Shelf only</label>
       </fieldset>
     </section>
+
     <p class="hint">
       Rank is among every beer in the stores you ticked, not just the search hits.
       Cheapest ticket uses Dan Murphy’s member prices and Liquorland multi-buys when
       they beat the shelf.
     </p>
+
     <div class="table-wrap">
       <table>
         <thead>
@@ -76,6 +79,7 @@
       </table>
     </div>
     <p class="count" id="count"></p>
+
     <footer>
       <p>
         Not affiliated with Dan Murphy’s, Liquorland, or Endeavour Group. Prices
@@ -87,6 +91,8 @@
         <a href="./beers.json">Raw data</a>
       </p>
     </footer>
-    <script src="./app.js" type="module"></script>
+    <script type="module">
+      import(`./app.js?t=${Date.now()}`);
+    </script>
   </body>
 </html>
