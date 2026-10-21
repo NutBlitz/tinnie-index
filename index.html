@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tinnie Index — cheapest beer in Australia, by the litre</title>
+    <meta
+      name="description"
+      content="Dan Murphy's and Liquorland beers ranked by cheapest dollars per litre. Member tickets and multi-buys included. Public domain."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="mast">
+      <p class="kicker">Independent · unofficial · public domain</p>
+      <h1>Tinnie Index</h1>
+      <p class="lede">
+        Every listed beer at Dan Murphy’s and Liquorland, ranked by the cheapest
+        dollars per litre. “On special” is a vibe. The litre is a unit.
+      </p>
+      <p class="meta" id="updated">Loading catalogue…</p>
+    </header>
+    <section class="controls" aria-label="Filters">
+      <label class="field grow">
+        <span>Search</span>
+        <input id="q" type="search" placeholder="Heineken, Great Northern, Ultra…" />
+      </label>
+      <label class="field">
+        <span>Style</span>
+        <select id="style">
+          <option value="">All styles</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>ABV</span>
+        <select id="abv">
+          <option value="">Any ABV</option>
+          <option value="zero">0–0.5%</option>
+          <option value="low">0.5–3.5%</option>
+          <option value="mid">3.5–4.4%</option>
+          <option value="full">4.4–6%</option>
+          <option value="strong">6%+</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </label>
+      <fieldset class="stores">
+        <legend>Stores</legend>
+        <label><input type="checkbox" id="store-dan" checked /> Dan Murphy’s</label>
+        <label><input type="checkbox" id="store-ll" checked /> Liquorland</label>
+      </fieldset>
+      <fieldset class="price-mode">
+        <legend>Price</legend>
+        <label><input type="radio" name="mode" value="deal" checked /> Cheapest ticket</label>
+        <label><input type="radio" name="mode" value="shelf" /> Shelf only</label>
+      </fieldset>
+    </section>
+    <p class="hint">
+      Rank is among every beer in the stores you ticked, not just the search hits.
+      Cheapest ticket uses Dan Murphy’s member prices and Liquorland multi-buys when
+      they beat the shelf.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="num">Rank</th>
+            <th>Beer</th>
+            <th>Store</th>
+            <th>Style</th>
+            <th class="num">ABV</th>
+            <th class="num">$/L</th>
+            <th>Deal</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="count" id="count"></p>
+    <footer>
+      <p>
+        Not affiliated with Dan Murphy’s, Liquorland, or Endeavour Group. Prices
+        are parsed from public catalogues and can be wrong, stale, or stock-gated.
+        Confirm on the retailer site before you drive.
+      </p>
+      <p>
+        Code is public domain (<a href="https://unlicense.org/">Unlicense</a>).
+        <a href="./beers.json">Raw data</a>
+      </p>
+    </footer>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
