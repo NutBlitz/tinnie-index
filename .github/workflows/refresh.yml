@@ -1,0 +1,35 @@
+name: Refresh prices
+
+on:
+  schedule:
+    - cron: "20 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Fetch catalogues
+        continue-on-error: true
+        run: node scripts/refresh.mjs
+      - name: Keep GitHub Pages copy in sync
+        run: |
+          mkdir -p public data
+          if [ -f data/beers.json ]; then
+            cp data/beers.json beers.json
+            cp data/beers.json public/beers.json
+          fi
+      - name: Commit snapshot if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add beers.json data/beers.json data/ll-abv.json public/beers.json
+          git diff --cached --quiet || git commit -m "Refresh beer prices"
+          git push
