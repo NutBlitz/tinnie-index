@@ -181,6 +181,14 @@ th {
   color: var(--muted);
 }
 
+.chg small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.65rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
 tr.moved-down td {
   background: #eef6ef;
 }
