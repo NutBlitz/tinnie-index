@@ -163,6 +163,7 @@ function render(data) {
 
   const extra = shown.length > 800 ? ` Showing first 800.` : "";
   $("count").textContent = `${shown.length} of ${universe.length} beers in this ranking.${extra}`;
+  labelChgOptions(universe, mode);
 }
 
 function fillStyles(beers) {
@@ -182,6 +183,26 @@ function storeCounts(data) {
     .join(" · ");
 }
 
+function moveCounts(beers, mode) {
+  let down = 0;
+  let up = 0;
+  for (const beer of beers) {
+    const kind = chgKind(ticket(beer, mode).chg);
+    if (kind === "down") down++;
+    if (kind === "up") up++;
+  }
+  return { down, up };
+}
+
+function labelChgOptions(beers, mode) {
+  const { down, up } = moveCounts(beers, mode);
+  const sel = $("chg");
+  for (const opt of sel.options) {
+    if (opt.value === "down") opt.textContent = `Dropped (${down})`;
+    if (opt.value === "up") opt.textContent = `Rose (${up})`;
+  }
+}
+
 let data;
 try {
   const beersUrl = new URL("./beers.json", import.meta.url);
@@ -195,8 +216,11 @@ try {
   throw err;
 }
 const when = new Date(data.updatedAt);
+const moves = moveCounts(data.beers, "deal");
 $("updated").textContent =
-  `${data.beers.length} beers · updated ${when.toLocaleString("en-AU")} · ` + storeCounts(data);
+  `${data.beers.length} beers · updated ${when.toLocaleString("en-AU")} · ` +
+  storeCounts(data) +
+  ` · ${moves.down} dropped / ${moves.up} rose this week`;
 fillStyles(data.beers);
 render(data);
 
