@@ -6,12 +6,18 @@
   --paper: #fffdf8;
   --dan: #7a1f2b;
   --ll: #1f4d3a;
+  --bws: #8a6a12;
+  --down: #1f6b3a;
+  --up: #9b2c2c;
   --accent: #c45c26;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body {
+html,
+body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
@@ -39,9 +45,15 @@ body {
   font-family: ui-sans-serif, system-ui, sans-serif;
 }
 
-.lede { max-width: 42rem; font-size: 1.15rem; }
+.lede {
+  max-width: 42rem;
+  font-size: 1.15rem;
+}
 
-.meta, .hint, .count, footer {
+.meta,
+.hint,
+.count,
+footer {
   color: var(--muted);
   font-size: 0.92rem;
 }
@@ -64,9 +76,12 @@ body {
   min-width: 9rem;
 }
 
-.field.grow { flex: 1 1 16rem; }
+.field.grow {
+  flex: 1 1 16rem;
+}
 
-.field span, fieldset legend {
+.field span,
+fieldset legend {
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -74,7 +89,8 @@ body {
   color: var(--muted);
 }
 
-input, select {
+input,
+select {
   font: inherit;
   padding: 0.45rem 0.55rem;
   border: 1px solid var(--line);
@@ -97,9 +113,14 @@ fieldset {
   border: 1px solid var(--line);
 }
 
-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
 
-th, td {
+th,
+td {
   text-align: left;
   padding: 0.55rem 0.7rem;
   border-bottom: 1px solid var(--line);
@@ -117,8 +138,15 @@ th {
   top: 0;
 }
 
-.num { text-align: right; font-variant-numeric: tabular-nums; }
-.rank { font-weight: 700; font-variant-numeric: tabular-nums; }
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rank {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 
 .store {
   font-family: ui-sans-serif, system-ui, sans-serif;
@@ -126,8 +154,40 @@ th {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.store.dan { color: var(--dan); }
-.store.ll { color: var(--ll); }
+
+.store.dan {
+  color: var(--dan);
+}
+
+.store.ll {
+  color: var(--ll);
+}
+
+.store.bws {
+  color: var(--bws);
+}
+
+.chg.down {
+  color: var(--down);
+  font-weight: 700;
+}
+
+.chg.up {
+  color: var(--up);
+  font-weight: 700;
+}
+
+.chg.muted {
+  color: var(--muted);
+}
+
+tr.moved-down td {
+  background: #eef6ef;
+}
+
+tr.moved-up td {
+  background: #f8eeee;
+}
 
 .deal-kind {
   display: inline-block;
@@ -139,9 +199,17 @@ th {
   color: var(--accent);
 }
 
-a { color: inherit; }
-footer { margin-top: 2rem; }
+a {
+  color: inherit;
+}
+
+footer {
+  margin-top: 2rem;
+}
 
 @media (max-width: 700px) {
-  th:nth-child(4), td:nth-child(4) { display: none; }
+  th:nth-child(4),
+  td:nth-child(4) {
+    display: none;
+  }
 }
