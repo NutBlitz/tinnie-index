@@ -63,8 +63,44 @@ function inferAbv(name, existing) {
   if (/\b0\.0\b/.test(n)) return 0;
   if (/ultra low alcohol/i.test(n)) return 0.5;
   if (/\bbirell\b/i.test(n)) return 0.5;
+  if (/non[-\s]?alcoholic|\balcohol[-\s]?free\b/i.test(n)) return 0;
   if (/\bzero\b/i.test(n) && !/carb|sugar|joule/i.test(n)) return 0;
   return existing ?? null;
+}
+
+function coreName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9.]+/g, " ")
+    .replace(/\b\d+(?:\.\d+)?(?:\s*x\s*\d+(?:\.\d+)?)+\s*m?l\b/g, " ")
+    .replace(/\b\d+(?:\.\d+)?\s*m?l\b/g, " ")
+    .replace(/\b\d+\s*x\s*\d+\b/g, " ")
+    .replace(/\b(cans?|bottles?|longnecks?|stubbies|pack|packs|case|pk|carton|fully imported)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fillAbvFromKnown(rows, known) {
+  const byCore = new Map();
+  for (const beer of known) {
+    if (beer.abv == null) continue;
+    const key = coreName(beer.name);
+    if (key.length < 8 || key.split(" ").length < 2) continue;
+    const set = byCore.get(key) || new Set();
+    set.add(beer.abv);
+    byCore.set(key, set);
+  }
+  let filled = 0;
+  for (const row of rows) {
+    if (row.abv != null) continue;
+    const set = byCore.get(coreName(row.name));
+    if (set && set.size === 1) {
+      row.abv = [...set][0];
+      filled++;
+    }
+  }
+  return filled;
 }
 
 function baseSku(sku) {
@@ -108,6 +144,109 @@ function saveAbvCache(cache) {
     path.join(ROOT, "data", "ll-abv.json"),
     JSON.stringify(cache, null, 0),
   );
+}
+
+function abvFromBwsProduct(product) {
+  if (!product) return null;
+  for (const key of ["alcohol%", "webalcoholpercentage", "alcoholpercentage"]) {
+    const abv = toNum(detail(product, key));
+    if (abv != null && abv >= 0 && abv <= 15) return abv;
+  }
+  return null;
+}
+
+function abvFromBwsProducts(products) {
+  for (const product of products || []) {
+    const abv = abvFromBwsProduct(product);
+    if (abv != null) return abv;
+  }
+  return null;
+}
+
+function loadBwsAbvCache(prevBeers) {
+  const cache = {};
+  const file = path.join(ROOT, "data", "bws-abv.json");
+  if (fs.existsSync(file)) {
+    try {
+      Object.assign(cache, JSON.parse(fs.readFileSync(file, "utf8")));
+    } catch {
+      // ignore a broken cache and rebuild it
+    }
+  }
+  for (const row of prevBeers || []) {
+    if (row.store !== "bws" || row.abv == null) continue;
+    for (const sku of bwsProductCodes(row)) {
+      if (cache[sku] == null) cache[sku] = row.abv;
+    }
+  }
+  return cache;
+}
+
+function saveBwsAbvCache(cache) {
+  fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
+  fs.writeFileSync(
+    path.join(ROOT, "data", "bws-abv.json"),
+    JSON.stringify(cache, null, 0),
+  );
+}
+
+function bwsProductCodes(row) {
+  const codes = [];
+  const url = String(row.url || "").match(/\/product\/(\d+)/);
+  if (url) codes.push(url[1]);
+  if (row.sku) codes.push(String(row.sku));
+  return [...new Set(codes)];
+}
+
+async function fillBwsAbv(rows, cache) {
+  for (const row of rows) {
+    if (row.abv != null) continue;
+    for (const sku of bwsProductCodes(row)) {
+      if (cache[sku] != null) {
+        row.abv = cache[sku];
+        break;
+      }
+    }
+  }
+  const missing = [];
+  const seen = new Set();
+  for (const row of rows) {
+    if (row.abv != null) continue;
+    for (const sku of bwsProductCodes(row)) {
+      if (!sku || seen.has(sku)) continue;
+      seen.add(sku);
+      missing.push(sku);
+    }
+  }
+  let filled = 0;
+  await mapPool(missing, 6, async (sku) => {
+    try {
+      const json = await fetchJson(`https://api.bws.com.au/apis/ui/Product/${encodeURIComponent(sku)}`, {
+        headers: {
+          origin: "https://bws.com.au",
+          referer: "https://bws.com.au/",
+        },
+      });
+      const abv = abvFromBwsProducts(json.Products);
+      if (abv != null) {
+        cache[sku] = abv;
+        filled++;
+      }
+    } catch {
+      // keep going; a missing PDP should not kill the refresh
+    }
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  for (const row of rows) {
+    if (row.abv != null) continue;
+    for (const sku of bwsProductCodes(row)) {
+      if (cache[sku] != null) {
+        row.abv = cache[sku];
+        break;
+      }
+    }
+  }
+  return { missing: missing.length, filled };
 }
 
 async function mapPool(items, concurrency, fn) {
@@ -557,8 +696,7 @@ async function loadBws() {
     const sku = String(item.PackParentStockCode || product.ParentStockCode || product.Stockcode);
     if (seen.has(sku)) continue;
     seen.add(sku);
-    let abv = toNum(detail(product, "alcohol%"));
-    if (abv != null && (abv < 0 || abv > 15)) abv = null;
+    let abv = abvFromBwsProducts(products);
     abv = inferAbv(name, abv);
     let style = detail(product, "liquorstyle") || inferStyle(name);
     if (!style || /^\d+$/.test(String(style)) || String(style).length < 3) style = inferStyle(name);
@@ -698,6 +836,17 @@ async function main() {
     errors.push(`Liquorland ABV: ${err.message}`);
     console.error(errors.at(-1));
   }
+  const bwsAbvCache = loadBwsAbvCache(prev.beers);
+  try {
+    const abv = await fillBwsAbv(bws, bwsAbvCache);
+    saveBwsAbvCache(bwsAbvCache);
+    console.log(`BWS ABV: fetched ${abv.filled}/${abv.missing} missing product pages`);
+  } catch (err) {
+    errors.push(`BWS ABV: ${err.message}`);
+    console.error(errors.at(-1));
+  }
+  const copied = fillAbvFromKnown(bws, [...dan, ...ll, ...bws]);
+  if (copied) console.log(`BWS ABV: copied ${copied} from matching catalogue beers`);
   applyRanks(dan);
   applyRanks(ll);
   applyRanks(bws);
