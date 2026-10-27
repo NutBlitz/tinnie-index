@@ -49,6 +49,7 @@ function ticket(beer, mode) {
       rank: beer.rankShelf,
       kind: "",
       chg: beer.chgShelf7,
+      histKey: "shelf",
     };
   }
   return {
@@ -59,6 +60,7 @@ function ticket(beer, mode) {
     rank: beer.rankDeal,
     kind: beer.dealKind === "shelf" ? "" : beer.dealKind,
     chg: beer.chgDeal7,
+    histKey: "deal",
   };
 }
 
@@ -76,11 +78,37 @@ function inChgFilter(chg, filter) {
   return true;
 }
 
-function chgCell(chg) {
+function fmtDay(d) {
+  const [, m, day] = String(d).split("-");
+  return `${Number(day)}/${Number(m)}`;
+}
+
+function chgTitle(hist, key, today) {
+  if (!Array.isArray(hist) || hist.length < 2) return "";
+  return hist
+    .slice(0, -1)
+    .map((p) => {
+      const delta = moneyRound(today - p[key]);
+      const kind = chgKind(delta);
+      const arrow = kind === "down" ? "↓" : kind === "up" ? "↑" : "·";
+      const mag = kind ? ` ${arrow}$${money(Math.abs(delta))}` : " same";
+      return `${fmtDay(p.d)} $${money(p[key])} → today $${money(today)}${mag}`;
+    })
+    .join("\n");
+}
+
+function moneyRound(n) {
+  return Math.round(n * 100) / 100;
+}
+
+function chgCell(chg, hist, key, today) {
   const kind = chgKind(chg);
-  if (!kind) return `<td class="num chg muted">—</td>`;
+  const title = chgTitle(hist, key, today);
+  const attr = title ? ` title="${title.replaceAll('"', "&quot;")}"` : "";
+  if (!kind) return `<td class="num chg muted"${attr}>—</td>`;
   const arrow = kind === "down" ? "↓" : "↑";
-  return `<td class="num chg ${kind}">${arrow}$${money(Math.abs(chg))}</td>`;
+  const days = Array.isArray(hist) && hist.length ? `${fmtDay(hist[0].d)}–${fmtDay(hist.at(-1).d)}` : "7d";
+  return `<td class="num chg ${kind}"${attr}>${arrow}$${money(Math.abs(chg))}<small>${days}</small></td>`;
 }
 
 function render(data) {
@@ -127,7 +155,7 @@ function render(data) {
         <td>${beer.style || "—"}</td>
         <td class="num">${abvText(beer.abv)}</td>
         <td class="num"><strong>$${money(t.perL)}</strong></td>
-        ${chgCell(t.chg)}
+        ${chgCell(t.chg, beer.hist, t.histKey, t.perL)}
         <td>$${money(t.price)} · ${t.deal}${kind ? `<span class="deal-kind">${kind}</span>` : ""}</td>
       </tr>`;
     })
