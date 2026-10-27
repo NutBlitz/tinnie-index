@@ -745,7 +745,7 @@ function saveHistory(history) {
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history));
 }
 
-function applyHistory(beers, history, day, prev) {
+function applyHistory(beers, history, day, prev, fetchedStores = null) {
   const cutoffDate = new Date(`${day}T00:00:00Z`);
   cutoffDate.setUTCDate(cutoffDate.getUTCDate() - (HISTORY_DAYS - 1));
   const cut = cutoffDate.toISOString().slice(0, 10);
@@ -764,12 +764,16 @@ function applyHistory(beers, history, day, prev) {
         series.push({ d: prevDay, deal: old.dealPerL, shelf: old.shelfPerL });
       }
     }
-    const point = { d: day, deal: beer.dealPerL, shelf: beer.shelfPerL };
-    const last = series.at(-1);
-    if (last && last.d === day) series[series.length - 1] = point;
-    else series.push(point);
+    const fresh = !fetchedStores || fetchedStores[beer.store];
+    if (fresh) {
+      const point = { d: day, deal: beer.dealPerL, shelf: beer.shelfPerL };
+      const last = series.at(-1);
+      if (last && last.d === day) series[series.length - 1] = point;
+      else series.push(point);
+    }
     history[id] = series.filter((p) => p.d >= cut).slice(-HISTORY_DAYS);
     const window = history[id];
+    beer.hist = window;
     const oldest = window[0];
     if (window.length >= 2 && oldest) {
       beer.chgDeal7 = moneyRound(beer.dealPerL - oldest.deal);
@@ -790,9 +794,11 @@ async function main() {
   let ll = [];
   let bws = [];
   let fetchedAny = false;
+  const fetchedStores = { danmurphys: false, liquorland: false, bws: false };
   try {
     dan = await loadDanMurphys();
-    fetchedAny = true;
+    fetchedStores.danmurphys = dan.length > 0;
+    fetchedAny = fetchedAny || fetchedStores.danmurphys;
     console.log(`Dan Murphy's: ${dan.length} beers`);
   } catch (err) {
     errors.push(`Dan Murphy's: ${err.message}`);
@@ -800,7 +806,8 @@ async function main() {
   }
   try {
     ll = await loadLiquorland();
-    fetchedAny = true;
+    fetchedStores.liquorland = ll.length > 0;
+    fetchedAny = fetchedAny || fetchedStores.liquorland;
     console.log(`Liquorland: ${ll.length} beers`);
   } catch (err) {
     errors.push(`Liquorland: ${err.message}`);
@@ -808,7 +815,8 @@ async function main() {
   }
   try {
     bws = await loadBws();
-    fetchedAny = true;
+    fetchedStores.bws = bws.length > 0;
+    fetchedAny = fetchedAny || fetchedStores.bws;
     console.log(`BWS: ${bws.length} beers`);
   } catch (err) {
     errors.push(`BWS: ${err.message}`);
@@ -851,7 +859,7 @@ async function main() {
   applyRanks(ll);
   applyRanks(bws);
   const history = loadHistory();
-  applyHistory(beers, history, todayStamp(), prev);
+  applyHistory(beers, history, todayStamp(), prev, fetchedStores);
   saveHistory(history);
   const payload = {
     updatedAt: fetchedAny ? new Date().toISOString() : prev.updatedAt || new Date().toISOString(),
