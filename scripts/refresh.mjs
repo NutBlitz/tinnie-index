@@ -1,5 +1,5 @@
 /**
- * Pull public beer catalogues from Dan Murphy's and Liquorland,
+ * Pull public beer catalogues from Dan Murphy's, Liquorland, and BWS,
  * rank by cheapest listed dollars per litre, write data/beers.json
  * and public/beers.json.
  *
@@ -210,8 +210,8 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-function parseMlDan(product, title) {
-  const liquor = String(detail(product, "webliquorsize") || "");
+function parseMl(title, liquor) {
+  liquor = String(liquor || "");
   let ml = null;
   const titleMl = String(title).match(/(\d+(?:\.\d+)?)\s*mL/i);
   const titleL = String(title).match(/(\d+(?:\.\d+)?)\s*L\b/i);
@@ -228,6 +228,10 @@ function parseMlDan(product, title) {
   if (ml == null && titleL) ml = Number(titleL[1]) * 1000;
   if (ml == null && liquorL) ml = Number(liquorL[1]) * 1000;
   return ml;
+}
+
+function parseMlDan(product, title) {
+  return parseMl(title, detail(product, "webliquorsize"));
 }
 
 function unitsFromPrice(price, inner, cse) {
@@ -462,12 +466,195 @@ async function loadLiquorland() {
   return rows;
 }
 
+function bwsAppOnly(tag, product) {
+  const top = String(tag?.TopText || "");
+  return /app/i.test(top) || product.PromotionType === "AppBasedOffer";
+}
+
+async function loadBws() {
+  const pageSize = 100;
+  const headers = {
+    accept: "application/json",
+    origin: "https://bws.com.au",
+    referer: "https://bws.com.au/productgroup/all-beer",
+  };
+  const firstUrl =
+    `https://api.bws.com.au/apis/ui/ProductGroup/Products/all-beer` +
+    `?ExcludeBanners=true&ExcludeFacets=true&Location=%2Fproductgroup%2Fall-beer` +
+    `&pageNumber=1&pageSize=${pageSize}&sortType=ProductGroup_Relevance`;
+  const first = await fetchJson(firstUrl, { headers });
+  const total = first.TotalRecordCount || 0;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const items = [...(first.Items || [])];
+  for (let page = 2; page <= pages; page++) {
+    const json = await fetchJson(
+      firstUrl.replace("pageNumber=1", `pageNumber=${page}`),
+      { headers },
+    );
+    items.push(...(json.Items || []));
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  const rows = [];
+  const seen = new Set();
+  for (const item of items) {
+    const products = item.Products || [];
+    const options = [];
+    const add = (product, price, units, ml, deal, offer) => {
+      if (!(price > 0) || !units) return;
+      const litres = (units * ml) / 1000;
+      const perL = price / litres;
+      if (!Number.isFinite(perL) || perL < 2 || perL > 40) return;
+      options.push({
+        product,
+        price: moneyRound(price),
+        units,
+        perL: moneyRound(perL),
+        deal,
+        offer,
+      });
+    };
+    for (const product of products) {
+      const title = String(product.Name || product.Title || item.Name || "")
+        .replace(/<br\s*\/?>/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (skipName(title)) continue;
+      const ml = parseMl(title, detail(product, "liquorsize") || product.PackageSize);
+      if (!ml || ml < 200 || ml > 10000) continue;
+      const units = toNum(detail(product, "productunitquantity")) || 1;
+      const current = Number(product.Price);
+      const was = Number(product.WasPrice);
+      add(product, current, units, ml, dealFromUnits(units), was > current);
+      if (was > current) add(product, was, units, ml, dealFromUnits(units), false);
+      const tag = product.FixedPricePromoTag;
+      if (
+        tag &&
+        tag.TagType === "FixedPricePromo" &&
+        tag.ProductMultiplier >= 2 &&
+        tag.PromotionalPrice > 0 &&
+        !bwsAppOnly(tag, product)
+      ) {
+        const n = Number(tag.ProductMultiplier);
+        const label = `${String(tag.TopText || "").trim()} $${tag.PromotionalPrice}`.replace(/\s+/g, " ");
+        add(product, Number(tag.PromotionalPrice), units * n, ml, label, true);
+      }
+    }
+    if (!options.length) continue;
+    options.sort((a, b) => a.perL - b.perL || a.price - b.price);
+    const best = options[0];
+    const shelf = options.find((o) => !o.offer) || best;
+    const product = best.product;
+    const brand = product.BrandName || detail(product, "brand_name") || "";
+    let name = String(detail(product, "productname") || product.Name || "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (brand && name && !name.toLowerCase().startsWith(String(brand).toLowerCase())) {
+      name = `${brand} ${name}`;
+    }
+    if (skipName(name)) continue;
+    const sku = String(item.PackParentStockCode || product.ParentStockCode || product.Stockcode);
+    if (seen.has(sku)) continue;
+    seen.add(sku);
+    let abv = toNum(detail(product, "alcohol%"));
+    if (abv != null && (abv < 0 || abv > 15)) abv = null;
+    abv = inferAbv(name, abv);
+    let style = detail(product, "liquorstyle") || inferStyle(name);
+    if (!style || /^\d+$/.test(String(style)) || String(style).length < 3) style = inferStyle(name);
+    if (/cider/i.test(name)) style = "Cider";
+    const ml = parseMl(name, detail(product, "liquorsize") || product.PackageSize);
+    rows.push({
+      store: "bws",
+      sku,
+      name,
+      brand: brand || name.split(" ")[0],
+      style,
+      abv,
+      ml: Math.round(ml || 0),
+      url: `https://bws.com.au/product/${product.Stockcode}/${product.UrlFriendlyName || ""}`,
+      shelfPerL: shelf.perL,
+      shelfPrice: shelf.price,
+      shelfUnits: shelf.units,
+      shelfDeal: shelf.deal,
+      dealPerL: best.perL,
+      dealPrice: best.price,
+      dealUnits: best.units,
+      dealDeal: best.deal,
+      dealKind: best.offer && best.perL < shelf.perL - 0.005 ? "multibuy" : "shelf",
+    });
+  }
+  return rows.filter((row) => row.ml >= 200);
+}
+
+const HISTORY_DAYS = 7;
+const HISTORY_FILE = path.join(ROOT, "data", "price-history.json");
+
+function todayStamp(d = new Date()) {
+  return d.toISOString().slice(0, 10);
+}
+
+function loadHistory() {
+  try {
+    return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveHistory(history) {
+  fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history));
+}
+
+function applyHistory(beers, history, day, prev) {
+  const cutoffDate = new Date(`${day}T00:00:00Z`);
+  cutoffDate.setUTCDate(cutoffDate.getUTCDate() - (HISTORY_DAYS - 1));
+  const cut = cutoffDate.toISOString().slice(0, 10);
+  const prevMap = new Map(
+    (prev?.beers || []).map((row) => [`${row.store}:${row.sku}`, row]),
+  );
+  const prevDay = String(prev?.updatedAt || "").slice(0, 10);
+  const live = new Set();
+  for (const beer of beers) {
+    const id = `${beer.store}:${beer.sku}`;
+    live.add(id);
+    const series = Array.isArray(history[id]) ? history[id] : [];
+    if (!series.length && prevDay && prevDay !== day && prevDay >= cut) {
+      const old = prevMap.get(id);
+      if (old && old.dealPerL != null) {
+        series.push({ d: prevDay, deal: old.dealPerL, shelf: old.shelfPerL });
+      }
+    }
+    const point = { d: day, deal: beer.dealPerL, shelf: beer.shelfPerL };
+    const last = series.at(-1);
+    if (last && last.d === day) series[series.length - 1] = point;
+    else series.push(point);
+    history[id] = series.filter((p) => p.d >= cut).slice(-HISTORY_DAYS);
+    const window = history[id];
+    const oldest = window[0];
+    if (window.length >= 2 && oldest) {
+      beer.chgDeal7 = moneyRound(beer.dealPerL - oldest.deal);
+      beer.chgShelf7 = moneyRound(beer.shelfPerL - oldest.shelf);
+    } else {
+      beer.chgDeal7 = null;
+      beer.chgShelf7 = null;
+    }
+  }
+  for (const key of Object.keys(history)) {
+    if (!live.has(key)) delete history[key];
+  }
+}
+
 async function main() {
   const errors = [];
   let dan = [];
   let ll = [];
+  let bws = [];
+  let fetchedAny = false;
   try {
     dan = await loadDanMurphys();
+    fetchedAny = true;
     console.log(`Dan Murphy's: ${dan.length} beers`);
   } catch (err) {
     errors.push(`Dan Murphy's: ${err.message}`);
@@ -475,9 +662,18 @@ async function main() {
   }
   try {
     ll = await loadLiquorland();
+    fetchedAny = true;
     console.log(`Liquorland: ${ll.length} beers`);
   } catch (err) {
     errors.push(`Liquorland: ${err.message}`);
+    console.error(errors.at(-1));
+  }
+  try {
+    bws = await loadBws();
+    fetchedAny = true;
+    console.log(`BWS: ${bws.length} beers`);
+  } catch (err) {
+    errors.push(`BWS: ${err.message}`);
     console.error(errors.at(-1));
   }
 
@@ -488,7 +684,8 @@ async function main() {
   const keepStore = (store) => prev.beers.filter((b) => b.store === store);
   if (!dan.length) dan = keepStore("danmurphys");
   if (!ll.length) ll = keepStore("liquorland");
-  const beers = [...dan, ...ll];
+  if (!bws.length) bws = keepStore("bws");
+  const beers = [...dan, ...ll, ...bws];
   if (!beers.length) {
     throw new Error(`No beers fetched.\n${errors.join("\n")}`);
   }
@@ -503,16 +700,20 @@ async function main() {
   }
   applyRanks(dan);
   applyRanks(ll);
-  const fetched = errors.length < 2;
+  applyRanks(bws);
+  const history = loadHistory();
+  applyHistory(beers, history, todayStamp(), prev);
+  saveHistory(history);
   const payload = {
-    updatedAt: fetched ? new Date().toISOString() : prev.updatedAt || new Date().toISOString(),
-    source: "Public Dan Murphy's and Liquorland catalogues",
+    updatedAt: fetchedAny ? new Date().toISOString() : prev.updatedAt || new Date().toISOString(),
+    source: "Public Dan Murphy's, Liquorland, and BWS catalogues",
     errors,
     stores: {
       danmurphys: { label: "Dan Murphy's", count: dan.length },
       liquorland: { label: "Liquorland", count: ll.length },
+      bws: { label: "BWS", count: bws.length },
     },
-    beers: [...dan, ...ll],
+    beers,
   };
   fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
   fs.mkdirSync(path.join(ROOT, "public"), { recursive: true });
