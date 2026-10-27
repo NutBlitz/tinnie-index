@@ -30,6 +30,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add beers.json data/beers.json data/ll-abv.json public/beers.json
+          git add beers.json data/beers.json data/ll-abv.json data/price-history.json public/beers.json
           git diff --cached --quiet || git commit -m "Refresh beer prices"
           git push
