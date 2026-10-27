@@ -6,6 +6,12 @@ const ABV = {
   strong: [6, 99],
 };
 
+const STORES = {
+  danmurphys: { label: "Dan Murphy’s", box: "store-dan", cls: "dan" },
+  liquorland: { label: "Liquorland", box: "store-ll", cls: "ll" },
+  bws: { label: "BWS", box: "store-bws", cls: "bws" },
+};
+
 const $ = (id) => document.getElementById(id);
 
 function money(n) {
@@ -17,7 +23,7 @@ function abvText(v) {
 }
 
 function storeLabel(store) {
-  return store === "danmurphys" ? "Dan Murphy’s" : "Liquorland";
+  return STORES[store]?.label || store;
 }
 
 function kindLabel(kind) {
@@ -42,6 +48,7 @@ function ticket(beer, mode) {
       deal: beer.shelfDeal,
       rank: beer.rankShelf,
       kind: "",
+      chg: beer.chgShelf7,
     };
   }
   return {
@@ -51,22 +58,43 @@ function ticket(beer, mode) {
     deal: beer.dealDeal,
     rank: beer.rankDeal,
     kind: beer.dealKind === "shelf" ? "" : beer.dealKind,
+    chg: beer.chgDeal7,
   };
+}
+
+function chgKind(chg) {
+  if (chg == null || Math.abs(chg) < 0.05) return "";
+  return chg < 0 ? "down" : "up";
+}
+
+function inChgFilter(chg, filter) {
+  if (!filter) return true;
+  const kind = chgKind(chg);
+  if (filter === "down") return kind === "down";
+  if (filter === "up") return kind === "up";
+  if (filter === "unchanged") return !kind;
+  return true;
+}
+
+function chgCell(chg) {
+  const kind = chgKind(chg);
+  if (!kind) return `<td class="num chg muted">—</td>`;
+  const arrow = kind === "down" ? "↓" : "↑";
+  return `<td class="num chg ${kind}">${arrow}$${money(Math.abs(chg))}</td>`;
 }
 
 function render(data) {
   const q = $("q").value.trim().toLowerCase();
   const style = $("style").value;
   const abv = $("abv").value;
-  const dan = $("store-dan").checked;
-  const ll = $("store-ll").checked;
+  const chg = $("chg").value;
   const mode = document.querySelector('input[name="mode"]:checked').value;
+  const on = {};
+  for (const [id, meta] of Object.entries(STORES)) {
+    on[id] = $(meta.box).checked;
+  }
 
-  const universe = data.beers.filter((beer) => {
-    if (beer.store === "danmurphys" && !dan) return false;
-    if (beer.store === "liquorland" && !ll) return false;
-    return true;
-  });
+  const universe = data.beers.filter((beer) => on[beer.store]);
 
   const ranked = [...universe].sort((a, b) => {
     const ta = ticket(a, mode).perL;
@@ -78,6 +106,7 @@ function render(data) {
   const shown = ranked.filter((beer) => {
     if (style && beer.style !== style) return false;
     if (!inAbvBand(beer, abv)) return false;
+    if (!inChgFilter(ticket(beer, mode).chg, chg)) return false;
     if (q && !`${beer.name} ${beer.brand} ${beer.style}`.toLowerCase().includes(q)) {
       return false;
     }
@@ -90,13 +119,15 @@ function render(data) {
       const t = ticket(beer, mode);
       const rank = rankOf.get(`${beer.store}:${beer.sku}`);
       const kind = kindLabel(t.kind);
-      return `<tr>
+      const moved = chgKind(t.chg);
+      return `<tr class="${moved ? `moved-${moved}` : ""}">
         <td class="num rank">${rank}</td>
         <td><a href="${beer.url}" rel="noopener noreferrer">${beer.name}</a></td>
-        <td class="store ${beer.store === "danmurphys" ? "dan" : "ll"}">${storeLabel(beer.store)}</td>
+        <td class="store ${STORES[beer.store]?.cls || ""}">${storeLabel(beer.store)}</td>
         <td>${beer.style || "—"}</td>
         <td class="num">${abvText(beer.abv)}</td>
         <td class="num"><strong>$${money(t.perL)}</strong></td>
+        ${chgCell(t.chg)}
         <td>$${money(t.price)} · ${t.deal}${kind ? `<span class="deal-kind">${kind}</span>` : ""}</td>
       </tr>`;
     })
@@ -117,6 +148,12 @@ function fillStyles(beers) {
   }
 }
 
+function storeCounts(data) {
+  return Object.keys(STORES)
+    .map((id) => `${data.stores?.[id]?.count ?? 0} ${STORES[id].label}`)
+    .join(" · ");
+}
+
 let data;
 try {
   const beersUrl = new URL("./beers.json", import.meta.url);
@@ -131,12 +168,11 @@ try {
 }
 const when = new Date(data.updatedAt);
 $("updated").textContent =
-  `${data.beers.length} beers · updated ${when.toLocaleString("en-AU")} · ` +
-  `${data.stores.danmurphys.count} Dan Murphy’s · ${data.stores.liquorland.count} Liquorland`;
+  `${data.beers.length} beers · updated ${when.toLocaleString("en-AU")} · ` + storeCounts(data);
 fillStyles(data.beers);
 render(data);
 
-for (const id of ["q", "style", "abv", "store-dan", "store-ll"]) {
+for (const id of ["q", "style", "abv", "chg", "store-dan", "store-ll", "store-bws"]) {
   $(id).addEventListener("input", () => render(data));
   $(id).addEventListener("change", () => render(data));
 }
