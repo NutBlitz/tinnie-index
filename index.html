@@ -6,7 +6,7 @@
     <title>Tinnie Index — cheapest beer in Australia, by the litre</title>
     <meta
       name="description"
-      content="Dan Murphy's and Liquorland beers ranked by cheapest dollars per litre. Member tickets and multi-buys included. Public domain."
+      content="Dan Murphy's, Liquorland, and BWS beers ranked by cheapest dollars per litre, with 7-day price moves. Public domain."
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -15,8 +15,9 @@
       <p class="kicker">Independent · unofficial · public domain</p>
       <h1>Tinnie Index</h1>
       <p class="lede">
-        Every listed beer at Dan Murphy’s and Liquorland, ranked by the cheapest
-        dollars per litre. “On special” is a vibe. The litre is a unit.
+        Every listed beer at Dan Murphy’s, Liquorland, and BWS, ranked by the
+        cheapest dollars per litre. Seven-day price moves are highlighted when
+        the daily refresh has a history to compare.
       </p>
       <p class="meta" id="updated">Loading catalogue…</p>
     </header>
@@ -44,10 +45,20 @@
           <option value="unknown">Unknown</option>
         </select>
       </label>
+      <label class="field">
+        <span>7-day move</span>
+        <select id="chg">
+          <option value="">Any change</option>
+          <option value="down">Dropped</option>
+          <option value="up">Rose</option>
+          <option value="unchanged">Unchanged / new</option>
+        </select>
+      </label>
       <fieldset class="stores">
         <legend>Stores</legend>
         <label><input type="checkbox" id="store-dan" checked /> Dan Murphy’s</label>
         <label><input type="checkbox" id="store-ll" checked /> Liquorland</label>
+        <label><input type="checkbox" id="store-bws" checked /> BWS</label>
       </fieldset>
       <fieldset class="price-mode">
         <legend>Price</legend>
@@ -58,8 +69,9 @@
 
     <p class="hint">
       Rank is among every beer in the stores you ticked, not just the search hits.
-      Cheapest ticket uses Dan Murphy’s member prices and Liquorland multi-buys when
-      they beat the shelf.
+      Cheapest ticket uses Dan Murphy’s member prices and Liquorland / BWS multi-buys
+      when they beat the shelf. <strong>7d</strong> is the change in $/L versus the
+      oldest price we have from the last week of daily snapshots.
     </p>
 
     <div class="table-wrap">
@@ -72,6 +84,7 @@
             <th>Style</th>
             <th class="num">ABV</th>
             <th class="num">$/L</th>
+            <th class="num">7d</th>
             <th>Deal</th>
           </tr>
         </thead>
@@ -82,7 +95,7 @@
 
     <footer>
       <p>
-        Not affiliated with Dan Murphy’s, Liquorland, or Endeavour Group. Prices
+        Not affiliated with Dan Murphy’s, Liquorland, BWS, or Endeavour Group. Prices
         are parsed from public catalogues and can be wrong, stale, or stock-gated.
         Confirm on the retailer site before you drive.
       </p>
