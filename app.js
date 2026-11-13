@@ -74,7 +74,7 @@ function ratingCell(beer) {
   const label = beer.ratingSource === "untappd" ? "Untappd" : "Store";
   const score = Number(beer.rating).toFixed(2);
   const inner = beer.ratingUrl
-    ? `<a href="${beer.ratingUrl}" rel="noopener noreferrer">${score}</a>`
+    ? `<a href="${beer.ratingUrl}" target="_blank" rel="noopener noreferrer">${score}</a>`
     : score;
   return `<td class="num rating">${inner}<small>${label}</small></td>`;
 }
@@ -193,7 +193,7 @@ function render(data) {
       const moved = chgKind(t.chg);
       return `<tr class="${moved ? `moved-${moved}` : ""}">
         <td class="num rank">${rank}</td>
-        <td><a href="${beer.url}" rel="noopener noreferrer">${beer.name}</a></td>
+        <td><a href="${beer.url}" target="_blank" rel="noopener noreferrer">${beer.name}</a></td>
         <td class="store ${STORES[beer.store]?.cls || ""}">${storeLabel(beer.store)}</td>
         <td>${beer.style || "—"}</td>
         <td class="num">${abvText(beer.abv)}</td>
