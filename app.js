@@ -1,9 +1,36 @@
-const ABV = {
+const ABV_BEER = {
   zero: [0, 0.5],
   low: [0.5, 3.5],
   mid: [3.5, 4.4],
   full: [4.4, 6],
   strong: [6, 99],
+};
+
+const ABV_SPIRIT = {
+  under: [0, 37],
+  std: [37, 40],
+  forty: [40, 43],
+  over: [43, 90],
+};
+
+const ABV_LABELS = {
+  beer: [
+    ["", "Any ABV"],
+    ["zero", "0–0.5%"],
+    ["low", "0.5–3.5%"],
+    ["mid", "3.5–4.4%"],
+    ["full", "4.4–6%"],
+    ["strong", "6%+"],
+    ["unknown", "Unknown"],
+  ],
+  spirit: [
+    ["", "Any ABV"],
+    ["under", "Under 37%"],
+    ["std", "37–40%"],
+    ["forty", "40–43%"],
+    ["over", "43%+"],
+    ["unknown", "Unknown"],
+  ],
 };
 
 const STORES = {
@@ -32,11 +59,24 @@ function kindLabel(kind) {
   return "";
 }
 
-function inAbvBand(beer, band) {
+function inAbvBand(beer, band, kind) {
   if (!band) return true;
   if (band === "unknown") return beer.abv == null;
-  const [lo, hi] = ABV[band];
+  const table = kind === "spirit" ? ABV_SPIRIT : ABV_BEER;
+  const pair = table[band];
+  if (!pair) return true;
+  const [lo, hi] = pair;
   return beer.abv != null && beer.abv >= lo && beer.abv < hi;
+}
+
+function ratingCell(beer) {
+  if (beer.rating == null) return `<td class="num chg muted">—</td>`;
+  const label = beer.ratingSource === "untappd" ? "Untappd" : "Store";
+  const score = Number(beer.rating).toFixed(2);
+  const inner = beer.ratingUrl
+    ? `<a href="${beer.ratingUrl}" rel="noopener noreferrer">${score}</a>`
+    : score;
+  return `<td class="num rating">${inner}<small>${label}</small></td>`;
 }
 
 function ticket(beer, mode) {
@@ -117,12 +157,15 @@ function render(data) {
   const abv = $("abv").value;
   const chg = $("chg").value;
   const mode = document.querySelector('input[name="mode"]:checked').value;
+  const kind = document.querySelector('input[name="kind"]:checked')?.value || "beer";
   const on = {};
   for (const [id, meta] of Object.entries(STORES)) {
     on[id] = $(meta.box).checked;
   }
 
-  const universe = data.beers.filter((beer) => on[beer.store]);
+  const universe = data.beers.filter(
+    (beer) => on[beer.store] && (beer.kind || "beer") === kind,
+  );
 
   const ranked = [...universe].sort((a, b) => {
     const ta = ticket(a, mode).perL;
@@ -133,7 +176,7 @@ function render(data) {
 
   const shown = ranked.filter((beer) => {
     if (style && beer.style !== style) return false;
-    if (!inAbvBand(beer, abv)) return false;
+    if (!inAbvBand(beer, abv, kind)) return false;
     if (!inChgFilter(ticket(beer, mode).chg, chg)) return false;
     if (q && !`${beer.name} ${beer.brand} ${beer.style}`.toLowerCase().includes(q)) {
       return false;
@@ -154,6 +197,7 @@ function render(data) {
         <td class="store ${STORES[beer.store]?.cls || ""}">${storeLabel(beer.store)}</td>
         <td>${beer.style || "—"}</td>
         <td class="num">${abvText(beer.abv)}</td>
+        ${ratingCell(beer)}
         <td class="num"><strong>$${money(t.perL)}</strong></td>
         ${chgCell(t.chg, beer.hist, t.histKey, t.perL)}
         <td>$${money(t.price)} · ${t.deal}${kind ? `<span class="deal-kind">${kind}</span>` : ""}</td>
@@ -162,19 +206,40 @@ function render(data) {
     .join("");
 
   const extra = shown.length > 800 ? ` Showing first 800.` : "";
-  $("count").textContent = `${shown.length} of ${universe.length} beers in this ranking.${extra}`;
+  const noun = kind === "spirit" ? "spirits" : "beers";
+  $("count").textContent = `${shown.length} of ${universe.length} ${noun} in this ranking.${extra}`;
   labelChgOptions(universe, mode);
 }
 
 function fillStyles(beers) {
-  const set = [...new Set(beers.map((b) => b.style).filter(Boolean))].sort();
   const sel = $("style");
+  const current = sel.value;
+  sel.innerHTML = "";
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "All styles";
+  sel.append(all);
+  const set = [...new Set(beers.map((b) => b.style).filter(Boolean))].sort();
   for (const style of set) {
     const opt = document.createElement("option");
     opt.value = style;
     opt.textContent = style;
     sel.append(opt);
   }
+  if ([...sel.options].some((o) => o.value === current)) sel.value = current;
+}
+
+function fillAbvOptions(kind) {
+  const sel = $("abv");
+  const current = sel.value;
+  sel.innerHTML = "";
+  for (const [value, label] of ABV_LABELS[kind] || ABV_LABELS.beer) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    sel.append(opt);
+  }
+  if ([...sel.options].some((o) => o.value === current)) sel.value = current;
 }
 
 function storeCounts(data) {
@@ -215,19 +280,30 @@ try {
   $("count").textContent = String(err.message || err);
   throw err;
 }
+function syncKind(data) {
+  const kind = document.querySelector('input[name="kind"]:checked')?.value || "beer";
+  fillAbvOptions(kind);
+  fillStyles(data.beers.filter((b) => (b.kind || "beer") === kind));
+  render(data);
+}
+
 const when = new Date(data.updatedAt);
-const moves = moveCounts(data.beers, "deal");
+const beerN = data.beers.filter((b) => (b.kind || "beer") === "beer").length;
+const spiritN = data.beers.filter((b) => b.kind === "spirit").length;
+const moves = moveCounts(data.beers.filter((b) => (b.kind || "beer") === "beer"), "deal");
 $("updated").textContent =
-  `${data.beers.length} beers · updated ${when.toLocaleString("en-AU")} · ` +
+  `${beerN} beers · ${spiritN} spirits · updated ${when.toLocaleString("en-AU")} · ` +
   storeCounts(data) +
   ` · ${moves.down} dropped / ${moves.up} rose this week`;
-fillStyles(data.beers);
-render(data);
+syncKind(data);
 
 for (const id of ["q", "style", "abv", "chg", "store-dan", "store-ll", "store-bws"]) {
   $(id).addEventListener("input", () => render(data));
   $(id).addEventListener("change", () => render(data));
 }
-for (const el of document.querySelectorAll('input[name="mode"]')) {
-  el.addEventListener("change", () => render(data));
+for (const el of document.querySelectorAll('input[name="mode"], input[name="kind"]')) {
+  el.addEventListener("change", () => {
+    if (el.name === "kind") syncKind(data);
+    else render(data);
+  });
 }

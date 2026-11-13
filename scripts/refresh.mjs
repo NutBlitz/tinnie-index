@@ -47,25 +47,87 @@ function inferStyle(name) {
 }
 
 function skipName(name) {
-  return /home brew|gift pack|tasting pack|crown seal|carbonation|brew enhancer|diy|pet caps|dextrose|spice of life/i.test(
+  return /home brew|gift pack|gift set|tasting pack|twin glass|glass pack|crown seal|carbonation|brew enhancer|diy|pet caps|dextrose|spice of life|miniatures|hip flask/i.test(
     name || "",
   );
 }
 
-function inferAbv(name, existing) {
-  if (existing != null && existing >= 0 && existing <= 15) return existing;
+function skipSpirit(name, ml, units = 1, abv = null) {
+  const n = String(name || "");
+  if (skipName(n)) return true;
+  if (!ml || ml < 200 || ml > 1500) return true;
+  if (abv != null && abv < 15) return true;
+  if (
+    /boxtail|premix|\brtd\b|seltzer|canned cocktail|vodka cruiser|\budl\b|cooler|\bruski\b|\b-?196\b|twisted|gee up|\bscwipp\b|& dry|and dry|& tonic|and tonic|\bsoda\b|margarita|makgeolli|\bcask\b|smirnoff ice/i.test(
+      n,
+    )
+  ) {
+    return true;
+  }
+  const namedAbv = n.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (namedAbv && Number(namedAbv[1]) < 15) return true;
+  if (/\bcola\b|lemonade|& coke|and cola|\bmixer\b|\bcarton\b/i.test(n)) return true;
+  if (/\bcan\b|\bcans\b|\d+\s*p(?:ac)?k\b/i.test(n) && ml <= 500) return true;
+  if (
+    ml <= 440 &&
+    /\b(lemon|grape|passion|pineapple|raspberry|watermelon|mango|peach|berr(?:y|ies)|fruits?|orange|lime)\b/i.test(n)
+  ) {
+    return true;
+  }
+  if (units > 4 && ml <= 440) return true;
+  return false;
+}
+
+function abvMax(kind) {
+  return kind === "spirit" ? 80 : 15;
+}
+
+function perLOk(perL, kind) {
+  if (!Number.isFinite(perL)) return false;
+  if (kind === "spirit") return perL >= 15 && perL <= 400;
+  return perL >= 2 && perL <= 40;
+}
+
+function inferAbv(name, existing, kind = "beer") {
+  const max = abvMax(kind);
+  if (existing != null && existing >= 0 && existing <= max) return existing;
   const n = String(name || "");
   const pct = n.match(/(\d+(?:\.\d+)?)\s*%/);
   if (pct) {
     const a = Number(pct[1]);
-    if (a >= 0 && a <= 15) return a;
+    if (a >= 0 && a <= max) return a;
   }
-  if (/\b0\.0\b/.test(n)) return 0;
-  if (/ultra low alcohol/i.test(n)) return 0.5;
-  if (/\bbirell\b/i.test(n)) return 0.5;
-  if (/non[-\s]?alcoholic|\balcohol[-\s]?free\b/i.test(n)) return 0;
-  if (/\bzero\b/i.test(n) && !/carb|sugar|joule/i.test(n)) return 0;
+  if (kind === "beer") {
+    if (/\b0\.0\b/.test(n)) return 0;
+    if (/ultra low alcohol/i.test(n)) return 0.5;
+    if (/\bbirell\b/i.test(n)) return 0.5;
+    if (/non[-\s]?alcoholic|\balcohol[-\s]?free\b/i.test(n)) return 0;
+    if (/\bzero\b/i.test(n) && !/carb|sugar|joule/i.test(n)) return 0;
+  }
   return existing ?? null;
+}
+
+function inferSpiritStyle(name, listed) {
+  const n = String(name || "").toLowerCase();
+  if (/whisky|whiskey|bourbon|scotch|\brye\b/.test(n)) return "Whisky";
+  if (/\bgin\b/.test(n)) return "Gin";
+  if (/vodka/.test(n)) return "Vodka";
+  if (/\brum\b/.test(n)) return "Rum";
+  if (/tequila|mezcal/.test(n)) return "Tequila";
+  if (/brandy|cognac|armagnac/.test(n)) return "Brandy";
+  if (/liqueur|baileys|sambuca|midori|advocaat/.test(n)) return "Liqueur";
+  if (/aperol|campari|vermouth|amaro/.test(n)) return "Aperitif";
+  const raw = String(listed || "").trim();
+  if (/^(whisky|whiskey|bourbon|scotch|gin|vodka|rum|tequila|mezcal|brandy|cognac|liqueur|aperitif|armagnac)$/i.test(raw)) {
+    return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  }
+  return "Spirits";
+}
+
+function ratingFromShop(score, count, source) {
+  const n = toNum(score);
+  if (n == null || n <= 0 || n > 5) return null;
+  return { score: moneyRound(n), count: Number(count) || 0, source };
 }
 
 function coreName(name) {
@@ -107,7 +169,7 @@ function baseSku(sku) {
   return String(sku || "").split("_")[0];
 }
 
-function abvFromLlProduct(product) {
+function abvFromLlProduct(product, kind = "beer") {
   if (!product) return null;
   let abv = toNum(product.alcoholPercent);
   if (abv == null) {
@@ -116,7 +178,7 @@ function abvFromLlProduct(product) {
     );
     abv = toNum(prop?.value);
   }
-  if (abv != null && (abv < 0 || abv > 15)) return null;
+  if (abv != null && (abv < 0 || abv > abvMax(kind))) return null;
   return abv;
 }
 
@@ -146,18 +208,19 @@ function saveAbvCache(cache) {
   );
 }
 
-function abvFromBwsProduct(product) {
+function abvFromBwsProduct(product, kind = "beer") {
   if (!product) return null;
+  const max = abvMax(kind);
   for (const key of ["alcohol%", "webalcoholpercentage", "alcoholpercentage"]) {
     const abv = toNum(detail(product, key));
-    if (abv != null && abv >= 0 && abv <= 15) return abv;
+    if (abv != null && abv >= 0 && abv <= max) return abv;
   }
   return null;
 }
 
-function abvFromBwsProducts(products) {
+function abvFromBwsProducts(products, kind = "beer") {
   for (const product of products || []) {
-    const abv = abvFromBwsProduct(product);
+    const abv = abvFromBwsProduct(product, kind);
     if (abv != null) return abv;
   }
   return null;
@@ -199,6 +262,7 @@ function bwsProductCodes(row) {
 }
 
 async function fillBwsAbv(rows, cache) {
+  const rowKind = rows.find((r) => r.kind)?.kind || "beer";
   for (const row of rows) {
     if (row.abv != null) continue;
     for (const sku of bwsProductCodes(row)) {
@@ -227,7 +291,7 @@ async function fillBwsAbv(rows, cache) {
           referer: "https://bws.com.au/",
         },
       });
-      const abv = abvFromBwsProducts(json.Products);
+      const abv = abvFromBwsProducts(json.Products, rowKind);
       if (abv != null) {
         cache[sku] = abv;
         filled++;
@@ -260,7 +324,8 @@ async function mapPool(items, concurrency, fn) {
   await Promise.all(workers);
 }
 
-async function fillLiquorlandAbv(rows, cache) {
+async function fillLiquorlandAbv(rows, cache, kind = "beer") {
+  const cat = kind === "spirit" ? "spirits" : "beer";
   for (const row of rows) {
     if (row.abv != null) continue;
     const cached = cache[baseSku(row.sku)];
@@ -279,7 +344,7 @@ async function fillLiquorlandAbv(rows, cache) {
   await mapPool(missing, 6, async (sku) => {
     try {
       const json = await fetchJson(
-        `https://www.liquorland.com.au/api/products/ll/nsw/beer/${encodeURIComponent(sku)}`,
+        `https://www.liquorland.com.au/api/products/ll/nsw/${cat}/${encodeURIComponent(sku)}`,
         {
           headers: {
             origin: "https://www.liquorland.com.au",
@@ -287,7 +352,7 @@ async function fillLiquorlandAbv(rows, cache) {
           },
         },
       );
-      const abv = abvFromLlProduct(json.product);
+      const abv = abvFromLlProduct(json.product, kind);
       if (abv != null) {
         cache[sku] = abv;
         filled++;
@@ -358,7 +423,7 @@ function parseMl(title, liquor) {
   const liquorL = liquor.match(/(\d+(?:\.\d+)?)\s*L$/i);
   if (titleMl) {
     const t = Number(titleMl[1]);
-    if (t >= 250 && t <= 1000) ml = t;
+    if (t >= 200 && t <= 1500) ml = t;
   }
   if (ml == null && liquorMl) {
     const t = Number(liquorMl[1]);
@@ -405,14 +470,14 @@ function skuMult(title, inner, cse, units) {
   return n >= 8 && n <= 24 ? n : 1;
 }
 
-function mkDanOption(pr, price, member, inner, cse, title, ml) {
+function mkDanOption(pr, price, member, inner, cse, title, ml, kind = "beer") {
   if (!(price > 0)) return null;
   let units = unitsFromPrice(pr, inner, cse);
   if (!units) return null;
   units *= skuMult(title, inner, cse, units);
   const litres = (units * ml) / 1000;
   const perL = price / litres;
-  if (!Number.isFinite(perL) || perL < 2 || perL > 40) return null;
+  if (!perLOk(perL, kind)) return null;
   return {
     deal: String(pr.Message || "").replace(/\s+/g, " ").trim(),
     price: moneyRound(price),
@@ -430,43 +495,50 @@ function pickBest(options) {
   return [...pool].sort((a, b) => a.perL - b.perL || a.price - b.price)[0];
 }
 
-async function loadDanMurphys() {
+async function loadDanMurphys(kind = "beer") {
   const pageSize = 100;
+  const departments = kind === "spirit" ? ["spirits", "whisky"] : ["beer"];
   const headers = {
     "content-type": "application/json",
     origin: "https://www.danmurphys.com.au",
-    referer: "https://www.danmurphys.com.au/beer/all",
+    referer:
+      kind === "spirit"
+        ? "https://www.danmurphys.com.au/spirits/all"
+        : "https://www.danmurphys.com.au/beer/all",
   };
-  const first = await fetchJson("https://api.danmurphys.com.au/apis/ui/Browse", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      department: "beer",
-      filters: [],
-      pageNumber: 1,
-      pageSize,
-      sortType: "Relevance",
-      Location: "ListerFacet",
-    }),
-  });
-  const total = first.TotalRecordCount || 0;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  const bundles = [...(first.Bundles || [])];
-  for (let page = 2; page <= pages; page++) {
-    const json = await fetchJson("https://api.danmurphys.com.au/apis/ui/Browse", {
+  const bundles = [];
+  for (const department of departments) {
+    const first = await fetchJson("https://api.danmurphys.com.au/apis/ui/Browse", {
       method: "POST",
       headers,
       body: JSON.stringify({
-        department: "beer",
+        department,
         filters: [],
-        pageNumber: page,
+        pageNumber: 1,
         pageSize,
         sortType: "Relevance",
         Location: "ListerFacet",
       }),
     });
-    bundles.push(...(json.Bundles || []));
-    await new Promise((r) => setTimeout(r, 250));
+    bundles.push(...(first.Bundles || []));
+    const total = first.TotalRecordCount || 0;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    for (let page = 2; page <= pages; page++) {
+      const json = await fetchJson("https://api.danmurphys.com.au/apis/ui/Browse", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          department,
+          filters: [],
+          pageNumber: page,
+          pageSize,
+          sortType: "Relevance",
+          Location: "ListerFacet",
+        }),
+      });
+      bundles.push(...(json.Bundles || []));
+      await new Promise((r) => setTimeout(r, 250));
+    }
   }
 
   const rows = [];
@@ -481,14 +553,15 @@ async function loadDanMurphys() {
     if (cat === "otherdrinksandaccessories" || skipName(title)) continue;
     const ml = parseMlDan(product, title);
     if (!ml || ml < 200 || ml > 10000) continue;
+    if (kind === "spirit" && skipSpirit(title, ml, 1, toNum(detail(product, "webalcoholpercentage")))) continue;
     const inner = toNum(detail(product, "webpacksizeinner"));
     const cse = toNum(detail(product, "webpacksizecase"));
     const options = [];
     for (const pr of Object.values(product.Prices || {})) {
-      const cur = mkDanOption(pr, pr.Value, pr.IsMemberOffer, inner, cse, title, ml);
+      const cur = mkDanOption(pr, pr.Value, pr.IsMemberOffer, inner, cse, title, ml, kind);
       if (cur) options.push(cur);
       if (pr.BeforePromotion > 0) {
-        const was = mkDanOption(pr, pr.BeforePromotion, false, inner, cse, title, ml);
+        const was = mkDanOption(pr, pr.BeforePromotion, false, inner, cse, title, ml, kind);
         if (was) options.push(was);
       }
     }
@@ -501,13 +574,22 @@ async function loadDanMurphys() {
       .replace(/\s+/g, " ")
       .trim();
     if (brand && !name.toLowerCase().startsWith(brand.toLowerCase())) name = `${brand} ${name}`;
-    let style = detail(product, "webbeerstyle") || inferStyle(name);
-    if (/cider/i.test(name)) style = "Cider";
+    let style =
+      kind === "spirit"
+        ? inferSpiritStyle(name, detail(product, "webspiritstyle") || detail(product, "webwhiskystyle"))
+        : detail(product, "webbeerstyle") || inferStyle(name);
+    if (kind === "beer" && /cider/i.test(name)) style = "Cider";
     let abv = toNum(detail(product, "webalcoholpercentage"));
-    if (abv != null && (abv < 0 || abv > 15)) abv = null;
-    abv = inferAbv(name, abv);
+    if (abv != null && (abv < 0 || abv > abvMax(kind))) abv = null;
+    abv = inferAbv(name, abv, kind);
+    const shop = ratingFromShop(
+      detail(product, "webaverageproductrating"),
+      detail(product, "webtotalreviewcount"),
+      "danmurphys",
+    );
     rows.push({
       store: "danmurphys",
+      kind,
       sku: String(product.Stockcode),
       name,
       brand: brand || name.split(" ")[0],
@@ -524,24 +606,26 @@ async function loadDanMurphys() {
       dealUnits: memberBest.units,
       dealDeal: memberBest.deal.replace(/^\s+/, ""),
       dealKind: memberBest.member && memberBest.perL < guestBest.perL - 0.005 ? "member" : "shelf",
+      shopRating: shop,
     });
   }
   return rows;
 }
 
-async function loadLiquorland() {
+async function loadLiquorland(kind = "beer") {
   const show = 200;
+  const cat = kind === "spirit" ? "spirits" : "beer";
   const first = await fetchJson(
-    `https://www.liquorland.com.au/api/products/ll/nsw/beer?page=1&show=${show}`,
-    { headers: { origin: "https://www.liquorland.com.au", referer: "https://www.liquorland.com.au/beer-and-cider/beer" } },
+    `https://www.liquorland.com.au/api/products/ll/nsw/${cat}?page=1&show=${show}`,
+    { headers: { origin: "https://www.liquorland.com.au", referer: `https://www.liquorland.com.au/${cat}` } },
   );
   const total = first.meta?.page?.productCount || first.products?.length || 0;
   const pages = Math.max(1, Math.ceil(total / show));
   const products = [...(first.products || [])];
   for (let page = 2; page <= pages; page++) {
     const json = await fetchJson(
-      `https://www.liquorland.com.au/api/products/ll/nsw/beer?page=${page}&show=${show}`,
-      { headers: { origin: "https://www.liquorland.com.au", referer: "https://www.liquorland.com.au/beer-and-cider/beer" } },
+      `https://www.liquorland.com.au/api/products/ll/nsw/${cat}?page=${page}&show=${show}`,
+      { headers: { origin: "https://www.liquorland.com.au", referer: `https://www.liquorland.com.au/${cat}` } },
     );
     products.push(...(json.products || []));
     await new Promise((r) => setTimeout(r, 250));
@@ -552,6 +636,7 @@ async function loadLiquorland() {
     if (skipName(product.name)) continue;
     const ml = Number(product.volumeMl);
     if (!ml || ml < 200 || ml > 10000) continue;
+    if (kind === "spirit" && skipSpirit(product.name, ml, unitsFromUom(product.unitOfMeasure), toNum(product.alcoholPercent))) continue;
     const units = unitsFromUom(product.unitOfMeasure);
     const current = Number(product.price?.current);
     if (!(current > 0) || !units) continue;
@@ -559,7 +644,7 @@ async function loadLiquorland() {
     const options = [];
     const add = (price, deal, offer, u, L) => {
       const perL = price / L;
-      if (!Number.isFinite(perL) || perL < 2 || perL > 40) return;
+      if (!perLOk(perL, kind)) return;
       options.push({
         price: moneyRound(price),
         deal,
@@ -587,10 +672,12 @@ async function loadLiquorland() {
       sku: String(product.id),
       name,
       brand,
-      style: inferStyle(name),
-      abv: inferAbv(name, null),
+      kind,
+      style: kind === "spirit" ? inferSpiritStyle(name) : inferStyle(name),
+      abv: inferAbv(name, toNum(product.alcoholPercent), kind),
       ml: Math.round(ml),
       url: `https://www.liquorland.com.au/${String(product.productUrl || "").replace(/^\//, "")}`,
+      shopRating: ratingFromShop(product.ratings?.average, product.ratings?.total, "liquorland"),
       shelfPerL: shelf.perL,
       shelfPrice: shelf.price,
       shelfUnits: shelf.units,
@@ -610,16 +697,17 @@ function bwsAppOnly(tag, product) {
   return /app/i.test(top) || product.PromotionType === "AppBasedOffer";
 }
 
-async function loadBws() {
+async function loadBws(kind = "beer") {
   const pageSize = 100;
+  const group = kind === "spirit" ? "all-spirits" : "all-beer";
   const headers = {
     accept: "application/json",
     origin: "https://bws.com.au",
-    referer: "https://bws.com.au/productgroup/all-beer",
+    referer: `https://bws.com.au/productgroup/${group}`,
   };
   const firstUrl =
-    `https://api.bws.com.au/apis/ui/ProductGroup/Products/all-beer` +
-    `?ExcludeBanners=true&ExcludeFacets=true&Location=%2Fproductgroup%2Fall-beer` +
+    `https://api.bws.com.au/apis/ui/ProductGroup/Products/${group}` +
+    `?ExcludeBanners=true&ExcludeFacets=true&Location=%2Fproductgroup%2F${group}` +
     `&pageNumber=1&pageSize=${pageSize}&sortType=ProductGroup_Relevance`;
   const first = await fetchJson(firstUrl, { headers });
   const total = first.TotalRecordCount || 0;
@@ -643,7 +731,7 @@ async function loadBws() {
       if (!(price > 0) || !units) return;
       const litres = (units * ml) / 1000;
       const perL = price / litres;
-      if (!Number.isFinite(perL) || perL < 2 || perL > 40) return;
+      if (!perLOk(perL, kind)) return;
       options.push({
         product,
         price: moneyRound(price),
@@ -661,6 +749,12 @@ async function loadBws() {
       if (skipName(title)) continue;
       const ml = parseMl(title, detail(product, "liquorsize") || product.PackageSize);
       if (!ml || ml < 200 || ml > 10000) continue;
+      if (
+        kind === "spirit" &&
+        skipSpirit(title, ml, toNum(detail(product, "productunitquantity")) || 1, abvFromBwsProduct(product, kind))
+      ) {
+        continue;
+      }
       const units = toNum(detail(product, "productunitquantity")) || 1;
       const current = Number(product.Price);
       const was = Number(product.WasPrice);
@@ -696,14 +790,21 @@ async function loadBws() {
     const sku = String(item.PackParentStockCode || product.ParentStockCode || product.Stockcode);
     if (seen.has(sku)) continue;
     seen.add(sku);
-    let abv = abvFromBwsProducts(products);
-    abv = inferAbv(name, abv);
-    let style = detail(product, "liquorstyle") || inferStyle(name);
-    if (!style || /^\d+$/.test(String(style)) || String(style).length < 3) style = inferStyle(name);
-    if (/cider/i.test(name)) style = "Cider";
+    let abv = abvFromBwsProducts(products, kind);
+    abv = inferAbv(name, abv, kind);
+    let style =
+      kind === "spirit"
+        ? inferSpiritStyle(name, detail(product, "spirittype") || detail(product, "liquorstyle"))
+        : detail(product, "liquorstyle") || inferStyle(name);
+    if (!style || /^\d+$/.test(String(style)) || String(style).length < 3) {
+      style = kind === "spirit" ? inferSpiritStyle(name) : inferStyle(name);
+    }
+    if (kind === "beer" && /cider/i.test(name)) style = "Cider";
     const ml = parseMl(name, detail(product, "liquorsize") || product.PackageSize);
+    const shop = ratingFromShop(product.OverallRating, product.NumberOfReviews, "bws");
     rows.push({
       store: "bws",
+      kind,
       sku,
       name,
       brand: brand || name.split(" ")[0],
@@ -720,9 +821,151 @@ async function loadBws() {
       dealUnits: best.units,
       dealDeal: best.deal,
       dealKind: best.offer && best.perL < shelf.perL - 0.005 ? "multibuy" : "shelf",
+      shopRating: shop,
     });
   }
   return rows.filter((row) => row.ml >= 200);
+}
+
+function parseUntappdSearch(html) {
+  const out = [];
+  const re =
+    /<div class="beer-item"[\s\S]*?<p class="name">\s*<a href="([^"]+)">([^<]+)<\/a>[\s\S]*?<p class="brewery">\s*<a href="[^"]+">([^<]+)<\/a>[\s\S]*?data-rating="([0-9.]+)"/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const score = Number(m[4]);
+    if (!(score > 0 && score <= 5)) continue;
+    out.push({
+      url: m[1].startsWith("http") ? m[1] : `https://untappd.com${m[1]}`,
+      name: m[2].replace(/\s+/g, " ").trim(),
+      brewery: m[3].replace(/\s+/g, " ").trim(),
+      score: moneyRound(score),
+    });
+  }
+  return out;
+}
+
+function queryForRating(row) {
+  const brand = String(row.brand || "").trim();
+  let core = coreName(row.name);
+  if (brand) {
+    const b = coreName(brand);
+    if (b && (core === b || core.startsWith(b + " "))) core = core.slice(b.length).trim();
+  }
+  const q = `${brand} ${core}`.replace(/\s+/g, " ").trim();
+  return q.slice(0, 80);
+}
+
+function pickUntappdHit(query, hits) {
+  if (!hits.length) return null;
+  const generic = new Set([
+    "lager",
+    "beer",
+    "ale",
+    "pale",
+    "dry",
+    "gold",
+    "mid",
+    "zero",
+    "light",
+    "premium",
+    "original",
+    "classic",
+    "draught",
+    "bitter",
+    "pils",
+    "pilsner",
+    "stout",
+    "cider",
+  ]);
+  const q = coreName(query);
+  const qParts = q.split(" ").filter((w) => w.length > 2);
+  const scored = hits.map((hit) => {
+    const blob = coreName(`${hit.brewery} ${hit.name}`);
+    const blobParts = new Set(blob.split(" "));
+    const hitCount = qParts.filter((w) => blobParts.has(w)).length;
+    const ratio = qParts.length ? hitCount / qParts.length : 0;
+    return { hit, ratio, blob };
+  });
+  scored.sort((a, b) => b.ratio - a.ratio);
+  const best = scored[0];
+  if (!best || best.ratio < 0.6) return null;
+  const first = qParts[0];
+  if (first && !best.blob.split(" ").includes(first)) return null;
+  const nameParts = coreName(best.hit.name)
+    .split(" ")
+    .filter((w) => w.length > 2 && !generic.has(w));
+  const extra = nameParts.filter((w) => !qParts.includes(w));
+  if (qParts.length <= 3 && extra.length >= 2) return null;
+  return best.hit;
+}
+
+function loadUntappdCache() {
+  const file = path.join(ROOT, "data", "untappd.json");
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveUntappdCache(cache) {
+  fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
+  fs.writeFileSync(path.join(ROOT, "data", "untappd.json"), JSON.stringify(cache));
+}
+
+async function fillUntappdRatings(rows, cache, limit = 80) {
+  const jobs = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const q = queryForRating(row);
+    if (!q || q.length < 5 || seen.has(q)) continue;
+    seen.add(q);
+    if (cache[q] !== undefined) continue;
+    jobs.push(q);
+  }
+  let filled = 0;
+  for (const q of jobs.slice(0, limit)) {
+    try {
+      const json = await fetch(
+        `https://untappd.com/search?q=${encodeURIComponent(q)}`,
+        { headers: { accept: "text/html", "user-agent": UA } },
+      );
+      const html = await json.text();
+      if (!json.ok || !/beer-item/.test(html)) continue;
+      const hit = pickUntappdHit(q, parseUntappdSearch(html));
+      cache[q] = hit
+        ? { score: hit.score, url: hit.url, name: hit.name, brewery: hit.brewery }
+        : null;
+      if (hit) filled++;
+    } catch {
+      // leave uncached so a blocked search can retry next run
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return { missing: jobs.length, filled };
+}
+
+function applyRatings(rows, cache) {
+  for (const row of rows) {
+    const q = queryForRating(row);
+    const hit = cache[q];
+    if (hit && hit.score) {
+      row.rating = hit.score;
+      row.ratingUrl = hit.url;
+      row.ratingSource = "untappd";
+    } else if (row.shopRating && row.shopRating.score) {
+      row.rating = row.shopRating.score;
+      row.ratingUrl = row.url;
+      row.ratingSource = row.shopRating.source;
+      row.ratingCount = row.shopRating.count;
+    } else {
+      row.rating = null;
+      row.ratingUrl = null;
+      row.ratingSource = null;
+    }
+    delete row.shopRating;
+  }
 }
 
 const HISTORY_DAYS = 7;
@@ -764,7 +1007,9 @@ function applyHistory(beers, history, day, prev, fetchedStores = null) {
         series.push({ d: prevDay, deal: old.dealPerL, shelf: old.shelfPerL });
       }
     }
-    const fresh = !fetchedStores || fetchedStores[beer.store];
+    if (!beer.kind) beer.kind = "beer";
+    const fresh =
+      !fetchedStores || fetchedStores[`${beer.store}:${beer.kind}`];
     if (fresh) {
       const point = { d: day, deal: beer.dealPerL, shelf: beer.shelfPerL };
       const last = series.at(-1);
@@ -790,85 +1035,107 @@ function applyHistory(beers, history, day, prev, fetchedStores = null) {
 
 async function main() {
   const errors = [];
-  let dan = [];
-  let ll = [];
-  let bws = [];
+  const fetchedStores = {};
   let fetchedAny = false;
-  const fetchedStores = { danmurphys: false, liquorland: false, bws: false };
-  try {
-    dan = await loadDanMurphys();
-    fetchedStores.danmurphys = dan.length > 0;
-    fetchedAny = fetchedAny || fetchedStores.danmurphys;
-    console.log(`Dan Murphy's: ${dan.length} beers`);
-  } catch (err) {
-    errors.push(`Dan Murphy's: ${err.message}`);
-    console.error(errors.at(-1));
+  const buckets = {
+    "danmurphys:beer": [],
+    "danmurphys:spirit": [],
+    "liquorland:beer": [],
+    "liquorland:spirit": [],
+    "bws:beer": [],
+    "bws:spirit": [],
+  };
+
+  async function tryLoad(key, label, fn) {
+    try {
+      const rows = await fn();
+      buckets[key] = rows;
+      fetchedStores[key] = rows.length > 0;
+      fetchedAny = fetchedAny || rows.length > 0;
+      console.log(`${label}: ${rows.length}`);
+    } catch (err) {
+      fetchedStores[key] = false;
+      errors.push(`${label}: ${err.message}`);
+      console.error(errors.at(-1));
+    }
   }
-  try {
-    ll = await loadLiquorland();
-    fetchedStores.liquorland = ll.length > 0;
-    fetchedAny = fetchedAny || fetchedStores.liquorland;
-    console.log(`Liquorland: ${ll.length} beers`);
-  } catch (err) {
-    errors.push(`Liquorland: ${err.message}`);
-    console.error(errors.at(-1));
-  }
-  try {
-    bws = await loadBws();
-    fetchedStores.bws = bws.length > 0;
-    fetchedAny = fetchedAny || fetchedStores.bws;
-    console.log(`BWS: ${bws.length} beers`);
-  } catch (err) {
-    errors.push(`BWS: ${err.message}`);
-    console.error(errors.at(-1));
-  }
+
+  await tryLoad("danmurphys:beer", "Dan Murphy's beer", () => loadDanMurphys("beer"));
+  await tryLoad("danmurphys:spirit", "Dan Murphy's spirits", () => loadDanMurphys("spirit"));
+  await tryLoad("liquorland:beer", "Liquorland beer", () => loadLiquorland("beer"));
+  await tryLoad("liquorland:spirit", "Liquorland spirits", () => loadLiquorland("spirit"));
+  await tryLoad("bws:beer", "BWS beer", () => loadBws("beer"));
+  await tryLoad("bws:spirit", "BWS spirits", () => loadBws("spirit"));
 
   const outFile = path.join(ROOT, "data", "beers.json");
   const rootFile = path.join(ROOT, "beers.json");
   const prevFile = fs.existsSync(outFile) ? outFile : fs.existsSync(rootFile) ? rootFile : null;
   const prev = prevFile ? JSON.parse(fs.readFileSync(prevFile, "utf8")) : { beers: [] };
-  const keepStore = (store) => prev.beers.filter((b) => b.store === store);
-  if (!dan.length) dan = keepStore("danmurphys");
-  if (!ll.length) ll = keepStore("liquorland");
-  if (!bws.length) bws = keepStore("bws");
-  const beers = [...dan, ...ll, ...bws];
-  if (!beers.length) {
-    throw new Error(`No beers fetched.\n${errors.join("\n")}`);
+  for (const row of prev.beers || []) {
+    if (!row.kind) row.kind = "beer";
   }
+  const keep = (store, kind) =>
+    (prev.beers || []).filter((b) => b.store === store && (b.kind || "beer") === kind);
+  for (const key of Object.keys(buckets)) {
+    const [store, kind] = key.split(":");
+    if (!buckets[key].length) buckets[key] = keep(store, kind);
+  }
+  const beers = Object.values(buckets).flat();
+  for (const row of beers) {
+    if (!row.kind) row.kind = "beer";
+  }
+  if (!beers.length) {
+    throw new Error(`No drinks fetched.\n${errors.join("\n")}`);
+  }
+  const llBeer = buckets["liquorland:beer"];
+  const llSpirit = buckets["liquorland:spirit"];
+  const bwsBeer = buckets["bws:beer"];
+  const bwsSpirit = buckets["bws:spirit"];
   const abvCache = loadAbvCache(prev.beers);
   try {
-    const abv = await fillLiquorlandAbv(ll, abvCache);
+    const abv = await fillLiquorlandAbv(llBeer, abvCache, "beer");
+    const abvS = await fillLiquorlandAbv(llSpirit, abvCache, "spirit");
     saveAbvCache(abvCache);
-    console.log(`Liquorland ABV: fetched ${abv.filled}/${abv.missing} missing product pages`);
+    console.log(`Liquorland ABV beer: ${abv.filled}/${abv.missing} · spirits: ${abvS.filled}/${abvS.missing}`);
   } catch (err) {
     errors.push(`Liquorland ABV: ${err.message}`);
     console.error(errors.at(-1));
   }
   const bwsAbvCache = loadBwsAbvCache(prev.beers);
   try {
-    const abv = await fillBwsAbv(bws, bwsAbvCache);
+    const abv = await fillBwsAbv(bwsBeer, bwsAbvCache);
+    const abvS = await fillBwsAbv(bwsSpirit, bwsAbvCache);
     saveBwsAbvCache(bwsAbvCache);
-    console.log(`BWS ABV: fetched ${abv.filled}/${abv.missing} missing product pages`);
+    console.log(`BWS ABV beer: ${abv.filled}/${abv.missing} · spirits: ${abvS.filled}/${abvS.missing}`);
   } catch (err) {
     errors.push(`BWS ABV: ${err.message}`);
     console.error(errors.at(-1));
   }
-  const copied = fillAbvFromKnown(bws, [...dan, ...ll, ...bws]);
-  if (copied) console.log(`BWS ABV: copied ${copied} from matching catalogue beers`);
-  applyRanks(dan);
-  applyRanks(ll);
-  applyRanks(bws);
+  const copied = fillAbvFromKnown([...bwsBeer, ...bwsSpirit], beers);
+  if (copied) console.log(`Copied ${copied} ABVs from matching catalogue drinks`);
+  for (const rows of Object.values(buckets)) applyRanks(rows);
+  const untappd = loadUntappdCache();
+  try {
+    const u = await fillUntappdRatings(beers, untappd, 80);
+    saveUntappdCache(untappd);
+    console.log(`Untappd: fetched ${u.filled}/${u.missing} missing searches`);
+  } catch (err) {
+    errors.push(`Untappd: ${err.message}`);
+    console.error(errors.at(-1));
+  }
+  applyRatings(beers, untappd);
   const history = loadHistory();
   applyHistory(beers, history, todayStamp(), prev, fetchedStores);
   saveHistory(history);
+  const byStore = (id) => beers.filter((b) => b.store === id).length;
   const payload = {
     updatedAt: fetchedAny ? new Date().toISOString() : prev.updatedAt || new Date().toISOString(),
-    source: "Public Dan Murphy's, Liquorland, and BWS catalogues",
+    source: "Public Dan Murphy's, Liquorland, and BWS catalogues · Untappd ratings where matched",
     errors,
     stores: {
-      danmurphys: { label: "Dan Murphy's", count: dan.length },
-      liquorland: { label: "Liquorland", count: ll.length },
-      bws: { label: "BWS", count: bws.length },
+      danmurphys: { label: "Dan Murphy's", count: byStore("danmurphys") },
+      liquorland: { label: "Liquorland", count: byStore("liquorland") },
+      bws: { label: "BWS", count: byStore("bws") },
     },
     beers,
   };

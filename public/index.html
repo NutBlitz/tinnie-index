@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tinnie Index — cheapest beer and spirits in Australia, by the litre</title>
+    <meta
+      name="description"
+      content="Dan Murphy's, Liquorland, and BWS beer and spirits ranked by cheapest dollars per litre, with Untappd ratings and 7-day price moves. Public domain."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="mast">
+      <p class="kicker">Independent · unofficial · public domain</p>
+      <h1>Tinnie Index</h1>
+      <p class="lede">
+        Beer and spirits at Dan Murphy’s, Liquorland, and BWS, ranked by the
+        cheapest dollars per litre. Ratings come from Untappd when we can match
+        the drink, otherwise the retailer’s own reviews. Seven-day price moves
+        are highlighted when the daily refresh has a history to compare.
+      </p>
+      <p class="meta" id="updated">Loading catalogue…</p>
+    </header>
+
+    <section class="controls" aria-label="Filters">
+      <label class="field grow">
+        <span>Search</span>
+        <input id="q" type="search" placeholder="Heineken, Grey Goose, Jack Daniel’s…" />
+      </label>
+      <label class="field">
+        <span>Style</span>
+        <select id="style">
+          <option value="">All styles</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>ABV</span>
+        <select id="abv">
+          <option value="">Any ABV</option>
+          <option value="zero">0–0.5%</option>
+          <option value="low">0.5–3.5%</option>
+          <option value="mid">3.5–4.4%</option>
+          <option value="full">4.4–6%</option>
+          <option value="strong">6%+</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>7-day move</span>
+        <select id="chg">
+          <option value="">Any change</option>
+          <option value="down">Dropped</option>
+          <option value="up">Rose</option>
+          <option value="unchanged">Unchanged / new</option>
+        </select>
+      </label>
+      <fieldset class="kind">
+        <legend>Drinks</legend>
+        <label><input type="radio" name="kind" value="beer" checked /> Beer</label>
+        <label><input type="radio" name="kind" value="spirit" /> Spirits</label>
+      </fieldset>
+      <fieldset class="stores">
+        <legend>Stores</legend>
+        <label><input type="checkbox" id="store-dan" checked /> Dan Murphy’s</label>
+        <label><input type="checkbox" id="store-ll" checked /> Liquorland</label>
+        <label><input type="checkbox" id="store-bws" checked /> BWS</label>
+      </fieldset>
+      <fieldset class="price-mode">
+        <legend>Price</legend>
+        <label><input type="radio" name="mode" value="deal" checked /> Cheapest ticket</label>
+        <label><input type="radio" name="mode" value="shelf" /> Shelf only</label>
+      </fieldset>
+    </section>
+
+    <p class="hint">
+      Rank is among the drink type you picked and the stores you ticked, not just
+      the search hits. Cheapest ticket uses Dan Murphy’s member prices and
+      Liquorland / BWS multi-buys when they beat the shelf. <strong>Rating</strong>
+      is Untappd when matched, otherwise that store’s own reviews.
+      <strong>7d</strong> is today’s $/L minus the oldest snapshot from the last week.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="num">Rank</th>
+            <th>Drink</th>
+            <th>Store</th>
+            <th>Style</th>
+            <th class="num">ABV</th>
+            <th class="num">Rating</th>
+            <th class="num">$/L</th>
+            <th class="num">7d</th>
+            <th>Deal</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="count" id="count"></p>
+
+    <footer>
+      <p>
+        Not affiliated with Dan Murphy’s, Liquorland, BWS, Endeavour Group, or Untappd.
+        Prices and ratings are parsed from public pages and can be wrong, stale, or
+        stock-gated. Confirm on the retailer and Untappd before you buy.
+      </p>
+      <p>
+        Code is public domain (<a href="https://unlicense.org/">Unlicense</a>).
+        <a href="./beers.json">Raw data</a>
+      </p>
+    </footer>
+    <script type="module">
+      import(`./app.js?t=${Date.now()}`);
+    </script>
+  </body>
+</html>

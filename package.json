@@ -1,7 +1,7 @@
 {
   "name": "tinnie-index",
   "version": "1.0.0",
-  "description": "Australia's cheapest beer, ranked by the litre. Public domain.",
+  "description": "Australia's cheapest beer and spirits, ranked by the litre. Public domain.",
   "license": "Unlicense",
   "type": "module",
   "scripts": {

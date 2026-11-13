@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tinnie Index — cheapest beer in Australia, by the litre</title>
+    <title>Tinnie Index — cheapest beer and spirits in Australia, by the litre</title>
     <meta
       name="description"
-      content="Dan Murphy's, Liquorland, and BWS beers ranked by cheapest dollars per litre, with 7-day price moves. Public domain."
+      content="Dan Murphy's, Liquorland, and BWS beer and spirits ranked by cheapest dollars per litre, with Untappd ratings and 7-day price moves. Public domain."
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -15,9 +15,10 @@
       <p class="kicker">Independent · unofficial · public domain</p>
       <h1>Tinnie Index</h1>
       <p class="lede">
-        Every listed beer at Dan Murphy’s, Liquorland, and BWS, ranked by the
-        cheapest dollars per litre. Seven-day price moves are highlighted when
-        the daily refresh has a history to compare.
+        Beer and spirits at Dan Murphy’s, Liquorland, and BWS, ranked by the
+        cheapest dollars per litre. Ratings come from Untappd when we can match
+        the drink, otherwise the retailer’s own reviews. Seven-day price moves
+        are highlighted when the daily refresh has a history to compare.
       </p>
       <p class="meta" id="updated">Loading catalogue…</p>
     </header>
@@ -25,7 +26,7 @@
     <section class="controls" aria-label="Filters">
       <label class="field grow">
         <span>Search</span>
-        <input id="q" type="search" placeholder="Heineken, Great Northern, Ultra…" />
+        <input id="q" type="search" placeholder="Heineken, Grey Goose, Jack Daniel’s…" />
       </label>
       <label class="field">
         <span>Style</span>
@@ -54,6 +55,11 @@
           <option value="unchanged">Unchanged / new</option>
         </select>
       </label>
+      <fieldset class="kind">
+        <legend>Drinks</legend>
+        <label><input type="radio" name="kind" value="beer" checked /> Beer</label>
+        <label><input type="radio" name="kind" value="spirit" /> Spirits</label>
+      </fieldset>
       <fieldset class="stores">
         <legend>Stores</legend>
         <label><input type="checkbox" id="store-dan" checked /> Dan Murphy’s</label>
@@ -68,11 +74,11 @@
     </section>
 
     <p class="hint">
-      Rank is among every beer in the stores you ticked, not just the search hits.
-      Cheapest ticket uses Dan Murphy’s member prices and Liquorland / BWS multi-buys
-      when they beat the shelf. <strong>7d</strong> is today’s $/L minus the same
-      beer’s price from the oldest snapshot in the last week. Hover for the
-      day-by-day gap versus today.
+      Rank is among the drink type you picked and the stores you ticked, not just
+      the search hits. Cheapest ticket uses Dan Murphy’s member prices and
+      Liquorland / BWS multi-buys when they beat the shelf. <strong>Rating</strong>
+      is Untappd when matched, otherwise that store’s own reviews.
+      <strong>7d</strong> is today’s $/L minus the oldest snapshot from the last week.
     </p>
 
     <div class="table-wrap">
@@ -80,10 +86,11 @@
         <thead>
           <tr>
             <th class="num">Rank</th>
-            <th>Beer</th>
+            <th>Drink</th>
             <th>Store</th>
             <th>Style</th>
             <th class="num">ABV</th>
+            <th class="num">Rating</th>
             <th class="num">$/L</th>
             <th class="num">7d</th>
             <th>Deal</th>
@@ -96,9 +103,9 @@
 
     <footer>
       <p>
-        Not affiliated with Dan Murphy’s, Liquorland, BWS, or Endeavour Group. Prices
-        are parsed from public catalogues and can be wrong, stale, or stock-gated.
-        Confirm on the retailer site before you drive.
+        Not affiliated with Dan Murphy’s, Liquorland, BWS, Endeavour Group, or Untappd.
+        Prices and ratings are parsed from public pages and can be wrong, stale, or
+        stock-gated. Confirm on the retailer and Untappd before you buy.
       </p>
       <p>
         Code is public domain (<a href="https://unlicense.org/">Unlicense</a>).
